@@ -1,0 +1,223 @@
+﻿<#@ template language="C#" debug="true" hostspecific="true"#>
+<#@ include file="EF.Utility.CS.ttinclude"#>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Diagnostics" #>
+
+<#@ output extension=".cs"#>
+<#
+
+// This needs to be set to the .edmx file that you want to process.
+string edmxFile = @"..\AppModel.edmx";
+
+CodeGenerationTools code = new CodeGenerationTools(this);
+MetadataLoader loader = new MetadataLoader(this);
+MetadataTools ef = new MetadataTools(this);
+
+
+EdmItemCollection ItemCollection = loader.CreateEdmItemCollection(edmxFile);
+EntityContainer container = ItemCollection.GetItems<EntityContainer>().FirstOrDefault();
+EntityFrameworkTemplateFileManager fileManager = EntityFrameworkTemplateFileManager.Create(this);
+
+foreach (EntityType entity in ItemCollection.GetItems<EntityType>().OrderBy(e => e.Name))
+{;
+
+		fileManager.StartNewFile(entity.Name + "RepositoryBase.cs");
+		#>using YourProjectName.Model;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Linq.Expressions;
+
+namespace <#= code.VsNamespaceSuggestion() #>
+{   
+	public partial class <#=code.Escape(entity)#>Repository : IRepositoryBase<<#=code.Escape(entity)#>>, IDisposable
+	{
+		#region Constructor
+
+		private yourProjectNameEntities context;
+
+		/// <summary>
+		/// Initialize the repository object
+		/// </summary>
+		public <#=code.Escape(entity)#>Repository()
+		{
+			context = new yourProjectNameEntities();
+			context.Configuration.ProxyCreationEnabled = false;
+		}
+
+		#endregion
+
+		#region Methods
+
+		// CRUD OPERATIONS ------------------------------------------------------------------------------------------
+
+		public IEnumerable<<#=code.Escape(entity)#>> GetAll()
+		{
+			try
+			{
+				return context.<#=code.Escape(entity)#>.ToList();
+			}
+			catch (Exception ex)
+			{
+				throw ex;
+			}
+		}
+
+		public <#=code.Escape(entity)#> Get(object id)
+		{
+			try
+			{
+				return context.<#=code.Escape(entity)#>.Find(id);
+			}
+			catch (Exception ex)
+			{
+				throw ex;
+			}
+		}
+
+		public <#=code.Escape(entity)#> Insert(<#=code.Escape(entity)#> entity)
+		{
+			try
+			{
+				context.<#=code.Escape(entity)#>.Add(entity);
+				context.SaveChanges();
+				return entity;
+			}
+			catch (Exception ex)
+			{
+				throw ex;
+			}
+		}
+
+		public void Update(<#=code.Escape(entity)#> entity)
+		{
+			try
+			{
+				context.Entry(entity).State = EntityState.Modified;
+				context.SaveChanges();
+			}
+			catch (Exception ex)
+			{
+				throw ex;
+			}
+		}
+
+		public void Delete(object id)
+		{
+			try
+			{
+				<#=code.Escape(entity)#> entity = context.<#=code.Escape(entity)#>.Find(id);
+				context.<#=code.Escape(entity)#>.Remove(entity);
+				context.SaveChanges();
+			}
+			catch (Exception ex)
+			{
+				throw ex;
+			}
+		}
+
+		public IEnumerable<<#=code.Escape(entity)#>> Query(Expression<Func<<#=code.Escape(entity)#>, bool>> filter)
+		{
+			return context.<#=code.Escape(entity)#>.Where(filter).ToList();
+		}
+
+		#endregion
+
+		#region Dispose
+
+		/// <summary>
+		/// Releases all resources used
+		/// </summary>
+		/// 
+		private bool disposed = false;
+		protected virtual void Dispose(bool disposing)
+		{
+			if (!this.disposed)
+			{
+				if (disposing)
+				{
+					context.Dispose();
+				}
+			}
+			this.disposed = true;
+		}
+		public void Dispose()
+		{
+			Dispose(true);
+			GC.SuppressFinalize(this);
+		}
+
+		#endregion
+	}
+}<#
+}
+
+fileManager.StartNewFile("IRepositoryBase.cs");
+#>using System;
+using System.Data.Entity;
+using System.Collections.Generic;
+using System.Linq.Expressions;
+
+namespace <#= code.VsNamespaceSuggestion() #>
+{
+	public interface IRepositoryBase<T> : IDisposable 
+		where T : class
+	{
+		IEnumerable<T> GetAll();
+		T Get(object id);    
+		T Insert(T entity);
+		void Update(T entity);  
+		void Delete(object id);
+		IEnumerable<T> Query(Expression<Func<T, bool>> filter);
+	}
+}
+
+<#	fileManager.Process();
+#>
+
+
+<#+
+
+bool DoesFileExist(string filename)
+{			
+	return File.Exists(Path.Combine(GetCurrentDirectory(),filename));	
+}
+
+string OutputFile(string filename)
+{
+	using(StreamReader sr = new StreamReader(Path.Combine(GetCurrentDirectory(),filename)))
+	{
+		string contents = sr.ReadToEnd();
+		return contents;
+	}
+}
+
+string GetCurrentDirectory()
+{
+	string executingDirectoryName = "";
+	string stackTraceFileName = new StackTrace(true).GetFrame(0).GetFileName();
+	if (String.IsNullOrEmpty(stackTraceFileName))
+	{
+		throw new ArgumentException("No value was specified for the 'directoryName' configuration parameter" +
+			", and we could not figure out the file name from the stack trace (most likely because of running " +
+			"the template with debug='False' specified in the <\u0023@ template \u0023> directive.");
+	}
+	else
+	{		
+		executingDirectoryName = Path.GetDirectoryName(stackTraceFileName);
+	}	
+	return executingDirectoryName;
+}
+
+string FindEDMXFileName()
+{
+	string edmxFile = "";
+
+	string[] entityFrameworkFiles = Directory.GetFiles(GetCurrentDirectory(), "*.edmx");
+	if(entityFrameworkFiles.Length > 0)
+		edmxFile = entityFrameworkFiles[0];
+
+	return edmxFile;
+}
+#>

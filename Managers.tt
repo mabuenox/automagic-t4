@@ -1,0 +1,225 @@
+﻿<#@ template language="C#" debug="true" hostspecific="true"#>
+<#@ include file="EF.Utility.CS.ttinclude"#>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Diagnostics" #>
+
+<#@ output extension=".cs"#>
+<#
+
+// This needs to be set to the .edmx file that you want to process.
+string edmxFile = @"..\..\YourProjectName.Data\AppModel.edmx";
+
+CodeGenerationTools code = new CodeGenerationTools(this);
+MetadataLoader loader = new MetadataLoader(this);
+MetadataTools ef = new MetadataTools(this);
+
+
+EdmItemCollection ItemCollection = loader.CreateEdmItemCollection(edmxFile);
+EntityContainer container = ItemCollection.GetItems<EntityContainer>().FirstOrDefault();
+EntityFrameworkTemplateFileManager fileManager = EntityFrameworkTemplateFileManager.Create(this);
+
+foreach (EntityType entity in ItemCollection.GetItems<EntityType>().OrderBy(e => e.Name))
+{;
+
+		fileManager.StartNewFile(entity.Name + "Manager.cs");
+		#>using System;
+using System.Collections.Generic;
+using System.Linq;
+using YourProjectName.Data.Repositories;
+using YourProjectName.Model;
+
+namespace YourProjectName.Business.Managers
+{   
+	[System.ComponentModel.DataObject]
+	public partial class <#=code.Escape(entity)#>Manager : IDisposable
+	{
+		#region Constructor
+
+        <#=code.Escape(entity)#>Repository repository;
+
+        /// <summary>
+        /// Initialize the manager object
+        /// </summary>
+        public <#=code.Escape(entity)#>Manager()
+        {
+            repository = new <#=code.Escape(entity)#>Repository();
+        }
+
+        #endregion
+
+		#region Methods
+
+		// CRUD OPERATIONS ------------------------------------------------------------------------------------------
+
+		[System.ComponentModel.DataObjectMethodAttribute(System.ComponentModel.DataObjectMethodType.Select, true)]
+        public IEnumerable<<#=code.Escape(entity)#>> GetAll()
+        {
+            try
+            {
+                return repository.GetAll();
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+		[System.ComponentModel.DataObjectMethodAttribute(System.ComponentModel.DataObjectMethodType.Select, true)]
+        public IEnumerable<<#=code.Escape(entity)#>> GetAll(string sortExpression, string sortDirection)
+        {
+            try
+            {
+				List<<#=code.Escape(entity)#>> collection = new List<<#=code.Escape(entity)#>>(repository.GetAll());
+
+                if (!string.IsNullOrEmpty(sortExpression))
+                {
+                    if (string.IsNullOrEmpty(sortDirection) || sortDirection.ToUpper() == Enum.GetName(typeof(SorterMode), SorterMode.Descending).ToUpper())
+                        collection.Sort(new UniversalComparer<<#=code.Escape(entity)#>>(sortExpression, UniversalComparer<<#=code.Escape(entity)#>>.SortDirection.Ascending));
+                    else
+                        collection.Sort(new UniversalComparer<<#=code.Escape(entity)#>>(sortExpression, UniversalComparer<<#=code.Escape(entity)#>>.SortDirection.Descending));
+                }
+                return collection;
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+		[System.ComponentModel.DataObjectMethodAttribute(System.ComponentModel.DataObjectMethodType.Select, true)]
+        public <#=code.Escape(entity)#> Get(int id)
+        {
+            try
+            {
+                return repository.Get(id);
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+		[System.ComponentModel.DataObjectMethodAttribute(System.ComponentModel.DataObjectMethodType.Insert, true)]
+        public int Create(<#=code.Escape(entity)#> entity)
+        {
+            try
+            {
+                //this.Validate(entity);
+                var addedEntity = repository.Insert(entity);
+                return addedEntity.<#=code.Escape(entity)#>ID;
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+		[System.ComponentModel.DataObjectMethodAttribute(System.ComponentModel.DataObjectMethodType.Update, true)]
+        public void Update(<#=code.Escape(entity)#> entity)
+        {
+            try
+            {
+                repository.Update(entity);
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+		[System.ComponentModel.DataObjectMethodAttribute(System.ComponentModel.DataObjectMethodType.Delete, true)]
+        public void Delete(int id)
+        {
+            try
+            {
+                repository.Delete(id);
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        // ADDITIONAL OPERATIONS -----------------------------------------------------------------------------------
+
+		
+
+		#endregion
+
+		#region Dispose
+
+        /// <summary>
+        /// Releases all resources used
+        /// </summary>
+        /// 
+        private bool disposed = false;
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!this.disposed)
+            {
+                if (disposing)
+                {
+                    repository.Dispose();
+                }
+            }
+            this.disposed = true;
+        }
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
+	}
+}<#
+}
+
+fileManager.Process();
+#>
+
+
+<#+
+
+bool DoesFileExist(string filename)
+{			
+	return File.Exists(Path.Combine(GetCurrentDirectory(),filename));	
+}
+
+string OutputFile(string filename)
+{
+	using(StreamReader sr = new StreamReader(Path.Combine(GetCurrentDirectory(),filename)))
+	{
+		string contents = sr.ReadToEnd();
+		return contents;
+	}
+}
+
+string GetCurrentDirectory()
+{
+	string executingDirectoryName = "";
+	string stackTraceFileName = new StackTrace(true).GetFrame(0).GetFileName();
+	if (String.IsNullOrEmpty(stackTraceFileName))
+	{
+		throw new ArgumentException("No value was specified for the 'directoryName' configuration parameter" +
+			", and we could not figure out the file name from the stack trace (most likely because of running " +
+			"the template with debug='False' specified in the <\u0023@ template \u0023> directive.");
+	}
+	else
+	{		
+		executingDirectoryName = Path.GetDirectoryName(stackTraceFileName);
+	}	
+	return executingDirectoryName;
+}
+
+string FindEDMXFileName()
+{
+	string edmxFile = "";
+
+	string[] entityFrameworkFiles = Directory.GetFiles(GetCurrentDirectory(), "*.edmx");
+	if(entityFrameworkFiles.Length > 0)
+		edmxFile = entityFrameworkFiles[0];
+
+	return edmxFile;
+}
+#>
